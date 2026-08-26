@@ -398,7 +398,7 @@ fi
 fi
 
 printf "\e[1;92m[\e[0m*\e[1;92m] Starting php server...\n"
-cd sites/$server && php -S 127.0.0.1:5555 &
+cd sites/$server && php -S 127.0.0.1:5555
 sleep 2
 printf "\e[1;92m[\e[0m*\e[1;92m] Starting ngrok server...\n"
 ngrok_bin=$(command -v ngrok)
