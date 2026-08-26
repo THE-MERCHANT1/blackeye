@@ -518,8 +518,6 @@ start_ngrok() {
 echo ""
 echo ""
 
-checkfound
-}
 start_localtunnel()  {
 if [[ -e sites/$server/ip.txt ]]; then
 rm -rf sites/$server/ip.txt
