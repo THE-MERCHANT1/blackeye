@@ -314,6 +314,3 @@ purposes only.
 
 The maintainers are not responsible for unauthorized or illegal use of this
 software.
-
-
-One thing I'd **not** do yet is call it something like *“BLACKEYE by Karim”*. Since you're modifying an existing project, **“Maintained Edition” / “Modernized Fork”** is a much cleaner presentation. Your Git history can then show exactly what *you* contributed.
