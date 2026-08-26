@@ -425,7 +425,7 @@ break
 fi
 sleep 1
 done
-if[[ "$ngrok_flag" != true ]];then
+if [[ "$ngrok_flag" != true ]]; then
 printf "\e[1;91m[!]\e[0m ngrok failed to run or no tunnel was created.\n"
 return 1
 fi
