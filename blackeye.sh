@@ -493,6 +493,7 @@ start_ngrok() {
         printf "\e[1;91m[!]\e[0m ngrok API responded, but no public URL was returned.\n"
 
         printf "\e[1;91m[!]\e[0m ngrok API response:\n"
+        printf "\e[1;91m[!]\e[0m "$link""
         cat "$tunnels_file"
 
         kill "$php_pid" 2>/dev/null
