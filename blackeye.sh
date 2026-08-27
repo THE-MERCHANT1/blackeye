@@ -514,6 +514,7 @@ start_ngrok() {
     NGROK_PID="$ngrok_pid"
     PHP_PID="$php_pid"
     NGROK_URL="$link"
+    checkfound
 }
 echo ""
 echo ""
